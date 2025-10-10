@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef} from 'react';
+import './App.css';
 
 // Endpoint ของ Flask Backend
 // const API_ENDPOINT = 'https://91e9f88adc26.ngrok-free.app//upload'
@@ -152,7 +153,7 @@ function SimpleImageUploader() {
     // ----------------------------------------------------------------------
     
     return (
-        <div>
+        <div className='Main'>
             <h1>อัปโหลดและทำนายภาพ (YOLO React)</h1>
             <p><strong>สถานะ:</strong> {status}</p>
             <hr />
@@ -197,8 +198,8 @@ function SimpleImageUploader() {
 
             <h2>3. ดูตัวอย่าง & ส่งข้อมูล</h2>
             <select value={modelName} onChange={handleSelectModel}>
-                <option selected value="new">version 4</option>
-                <option value="old">version 1</option>
+                <option selected value="new">Augmented</option>
+                <option value="old">No Augment</option>
             </select>
             {/* แสดงภาพต้นฉบับก่อนส่ง (เฉพาะเมื่อยังไม่มีภาพทำนายผล) */}
             {previewUrl && !predictedImageUrl && ( 
