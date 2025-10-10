@@ -30,6 +30,7 @@ def upload():
         
         model_name = request.form.get('model')
         # (old, new)
+        print(model_name)
         prediction_result = predict_image(file, model_name)
 
         if prediction_result == "No object detected":

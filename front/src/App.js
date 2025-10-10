@@ -12,6 +12,7 @@ function SimpleImageUploader() {
     const [predictionMessage, setPredictionMessage] = useState(null); 
     const [predictedImageBase64, setPredictedImageBase64] = useState(null); // <--- State สำหรับ Base64 String ของรูปภาพทำนายผล
     const [isSending, setIsSending] = useState(false); 
+    const [modelName, setModelName] = useState('new'); 
 
     // 2. ตัวอ้างอิง (Ref)
     const videoRef = useRef(null); 
@@ -99,6 +100,7 @@ function SimpleImageUploader() {
 
         const formData = new FormData();
         formData.append('file', capturedBlob, capturedBlob.name); 
+        formData.append('model', modelName); 
 
         try {
             const response = await fetch(API_ENDPOINT, {
@@ -131,6 +133,10 @@ function SimpleImageUploader() {
         } finally {
             setIsSending(false);
         }
+    };
+
+    const handleSelectModel = (event) => {
+        setModelName(event.target.value);
     };
     
     // URL สำหรับภาพตัวอย่าง (ภาพต้นฉบับก่อนส่ง)
@@ -190,7 +196,10 @@ function SimpleImageUploader() {
             <hr />
 
             <h2>3. ดูตัวอย่าง & ส่งข้อมูล</h2>
-            
+            <select value={modelName} onChange={handleSelectModel}>
+                <option selected value="new">version 4</option>
+                <option value="old">version 1</option>
+            </select>
             {/* แสดงภาพต้นฉบับก่อนส่ง (เฉพาะเมื่อยังไม่มีภาพทำนายผล) */}
             {previewUrl && !predictedImageUrl && ( 
                 <div style={{ marginTop: '10px' }}>
