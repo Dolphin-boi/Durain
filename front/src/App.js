@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 // Endpoint ของ Flask Backend
-// const API_ENDPOINT = 'https://797173ea6913.ngrok-free.app/upload'
+// const API_ENDPOINT = 'https://91e9f88adc26.ngrok-free.app//upload'
 const API_ENDPOINT = 'http://127.0.0.1:5000/upload'
 
 function SimpleImageUploader() {

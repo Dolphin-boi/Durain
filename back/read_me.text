@@ -1,0 +1,8 @@
+หากจะ run back
+
+1. run terminal และ set current directory ให้ตรงกับ folder back
+2. เรียกใช้งาน venv โดย   -window .\.venv\Scripts\Activate.ps1
+                        -Mac    source .venv/bin/activate (ไม่เคยลอง)
+3. python app.py
+
+port 5000
