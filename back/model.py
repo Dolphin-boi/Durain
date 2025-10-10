@@ -1,41 +1,22 @@
 from ultralytics import YOLO
 from PIL import Image
 import io
-import numpy
 
 import base64
 
-MODEL = YOLO('yolov8n.pt')
-# MODEL = YOLO('path/to/your/best.pt')
+modelNew = YOLO('modelv4.pt')
+modelOld = YOLO('modelv1.pt')
 
-def predict_image(image_file):
+def predict_image(image_file, model_name):
     try:
-        # image_bytes = image_file.read()
-        # image = Image.open(io.BytesIO(image_bytes))
-        
-        # results = MODEL.predict(image, conf=0.25, iou=0.7)
-        
-        # predictions = []
-        # for r in results:
-        #     names = r.names
-            
-        #     for class_id in r.boxes.cls:
-        #         class_name = names[int(class_id)]
-        #         predictions.append(class_name)
-        
-        # if not predictions:
-        #     return "No object detected"
-        
-
-        # unique_predictions = ", ".join(sorted(list(set(predictions))))
-        
-        # return unique_predictions
-        
         image_bytes = image_file.read()
         image = Image.open(io.BytesIO(image_bytes))
 
-        results = MODEL.predict(image, conf=0.25, iou=0.7)
-        
+        if model_name == "new":
+            results = modelNew.predict(image, conf=0.5)
+        else:
+            results = modelOld.predict(image, conf=0.5)
+
         if not any(r.boxes.cls.numel() > 0 for r in results): # numel() คือจำนวน element ใน tensor
             return "No object detected"
             
