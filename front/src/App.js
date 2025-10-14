@@ -1,30 +1,37 @@
-import React, { useState, useRef} from 'react';
-import './App.css';
+import React, { useState, useRef, useEffect } from 'react';
 
 // Endpoint ของ Flask Backend
-// const API_ENDPOINT = 'https://91e9f88adc26.ngrok-free.app//upload'
-const API_ENDPOINT = 'http://127.0.0.1:5000/upload'
+// ควรอัปเดตเป็น /predict ตามที่เราปรับปรุงใน Backend
+const API_ENDPOINT = 'http://127.0.0.1:5000/upload'; 
+// const API_ENDPOINT = 'https://91e9f88adc26.ngrok-free.app/upload'; 
+
+// กำหนดความถี่ในการทำนาย: 5 FPS หมายถึง ทุก 200 มิลลิวินาที (1000ms / 5)
+const AUTO_DETECT_INTERVAL_MS = 500; 
 
 function SimpleImageUploader() {
     // 1. ตัวแปรสถานะ (State)
     const [capturedBlob, setCapturedBlob] = useState(null); 
     const [status, setStatus] = useState('พร้อมใช้งาน'); 
     const [isCameraActive, setIsCameraActive] = useState(false); 
+    const [isAutoDetecting, setIsAutoDetecting] = useState(false); // สถานะ Auto Detect
     const [predictionMessage, setPredictionMessage] = useState(null); 
-    const [predictedImageBase64, setPredictedImageBase64] = useState(null); // <--- State สำหรับ Base64 String ของรูปภาพทำนายผล
+    const [predictedImageBase64, setPredictedImageBase64] = useState(null); 
     const [isSending, setIsSending] = useState(false); 
     const [modelName, setModelName] = useState('new'); 
-
+    
     // 2. ตัวอ้างอิง (Ref)
     const videoRef = useRef(null); 
     const canvasRef = useRef(null); 
     const streamRef = useRef(null); 
+    const autoDetectIntervalRef = useRef(null); // สำหรับเก็บ Timer ID
 
     // ----------------------------------------------------------------------
-    // ฟังก์ชันช่วยจัดการกล้อง (ไม่เปลี่ยนแปลง)
+    // ฟังก์ชันจัดการกล้องพื้นฐาน
     // ----------------------------------------------------------------------
 
     const stopCamera = () => {
+        // ต้องหยุด Auto Detect ด้วยเมื่อปิดกล้อง
+        stopAutoDetect(); 
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
             streamRef.current = null;
@@ -36,7 +43,7 @@ function SimpleImageUploader() {
         stopCamera();
         setCapturedBlob(null); 
         setPredictionMessage(null); 
-        setPredictedImageBase64(null); // เคลียร์ภาพผลลัพธ์
+        setPredictedImageBase64(null); 
         
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -53,54 +60,90 @@ function SimpleImageUploader() {
     };
 
     // ----------------------------------------------------------------------
-    // การจัดการไฟล์และภาพถ่าย (ปรับให้เคลียร์ผลลัพธ์ใหม่)
+    // NEW: ฟังก์ชัน Auto Detect (Timer Control)
     // ----------------------------------------------------------------------
-
-    const handleFileUpload = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            stopCamera();
-            setCapturedBlob(file);
-            setPredictionMessage(null); 
-            setPredictedImageBase64(null); // เคลียร์ภาพผลลัพธ์
-            setStatus(`ไฟล์พร้อมส่ง: ${file.name}`);
+    
+    // ฟังก์ชันหยุดการทำงานอัตโนมัติ
+    const stopAutoDetect = () => {
+        if (autoDetectIntervalRef.current) {
+            clearInterval(autoDetectIntervalRef.current);
+            autoDetectIntervalRef.current = null;
+        }
+        setIsAutoDetecting(false);
+        if (isCameraActive) {
+             setStatus('หยุดการทำนายอัตโนมัติ 🛑');
         }
     };
 
-    const takePhoto = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
+    // ฟังก์ชันเริ่มการทำงานอัตโนมัติ
+    const startAutoDetect = () => {
+        if (!isCameraActive) {
+            setStatus('กรุณาเปิดกล้องก่อนเริ่ม Auto Detect');
+            return;
+        }
         
-        if (!video || !canvas) return;
+        stopAutoDetect(); 
+        setIsAutoDetecting(true);
+        setStatus(`เริ่มทำนายอัตโนมัติ (${1000 / AUTO_DETECT_INTERVAL_MS} FPS) 🚀`);
 
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        canvas.toBlob((blob) => {
-            const file = new File([blob], "captured_image.jpeg", { type: "image/jpeg" });
-            setCapturedBlob(file);
-            stopCamera();
-            setPredictionMessage(null); 
-            setPredictedImageBase64(null); // เคลียร์ภาพผลลัพธ์
-            setStatus('ถ่ายภาพสำเร็จ! ไฟล์พร้อมส่ง 🖼️');
-        }, 'image/jpeg', 0.95);
+        // ตั้ง Interval เพื่อถ่ายภาพและส่งทำนายซ้ำๆ
+        autoDetectIntervalRef.current = setInterval(() => {
+            takeAndSendPhoto(true); // รันฟังก์ชันถ่ายและส่งในโหมด Auto
+        }, AUTO_DETECT_INTERVAL_MS);
     };
-
+    
     // ----------------------------------------------------------------------
-    // การส่งข้อมูลไปยัง Backend: ส่วนที่แก้ไขเพื่อรับ Base64 Image
+    // ฟังก์ชันหลัก: ถ่ายภาพและส่งทำนาย (ใช้ได้ทั้ง Manual และ Auto)
     // ----------------------------------------------------------------------
 
-    const sendImageToBackend = async () => {
-        if (!capturedBlob) return;
+    const takeAndSendPhoto = async (isAuto = false, fileToUpload = null) => {
+        let file;
 
+        // 1. จัดการการถ่ายภาพ/เตรียมไฟล์
+        if (fileToUpload) {
+            file = fileToUpload; // ใช้ไฟล์ที่ถูกอัปโหลด
+        } else if (isAuto || isCameraActive) {
+            // โหมด Auto หรือ Manual Capture
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            
+            if (!video || !canvas || isSending) {
+                // ป้องกันการถ่ายภาพซ้อนทับกันขณะที่กำลังส่งข้อมูลอยู่
+                return;
+            }
+            
+            // ถ่ายภาพจาก Video ลง Canvas
+            console.log(video.videoWidth, video.videoHeight)
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // แปลงภาพใน Canvas เป็นไฟล์ (Blob/File)
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+            file = new File([blob], "captured_image.jpeg", { type: "image/jpeg" });
+            
+            // ในโหมด Manual, เซ็ต capturedBlob และหยุดกล้อง
+            if (!isAuto) {
+                setCapturedBlob(file);
+                stopCamera(); // Stop camera only after taking the manual photo
+                setStatus('ถ่ายภาพสำเร็จ! กำลังส่งทำนาย...');
+            }
+
+        } else if (capturedBlob) {
+            // โหมด Manual Send โดยใช้ไฟล์ที่อยู่ใน State
+            file = capturedBlob;
+        } else {
+            return;
+        }
+
+        // 2. ส่งข้อมูลไปยัง Backend
         setIsSending(true);
-        setStatus('กำลังส่งภาพ...');
-        setPredictionMessage(null);
-        setPredictedImageBase64(null);
-
+        if (!isAuto) {
+             setPredictionMessage(null);
+        }
+       
         const formData = new FormData();
-        formData.append('file', capturedBlob, capturedBlob.name); 
+        formData.append('file', file, file.name); 
         formData.append('model', modelName); 
 
         try {
@@ -112,33 +155,74 @@ function SimpleImageUploader() {
             const result = await response.json();
 
             if (response.ok) {
-                setStatus(`ทำนายผลสำเร็จ ✅`);
-                
-                // *** การจัดการ Base64 Image ที่ส่งมาจาก Backend ***
                 if (result.predicted_image) {
-                    setPredictedImageBase64(result.predicted_image); // เก็บ Base64 string
-                    setPredictionMessage('พบวัตถุ! แสดงผลบนภาพที่ทำนายแล้ว');
+                    setPredictedImageBase64(result.predicted_image); 
+                    setPredictionMessage(`ทำนายสำเร็จ! พบวัตถุ (${isAuto ? 'Auto' : 'Manual'})`);
                 } else if (result.prediction === "No object detected") {
+                    setPredictedImageBase64(null);
                     setPredictionMessage(result.prediction);
                 } else {
-                    setPredictionMessage(result.msg || 'ทำนายผลสำเร็จ แต่ไม่ได้รับภาพผลลัพธ์');
+                    setPredictedImageBase64(null);
+                    setPredictionMessage(result.msg || 'ทำนายสำเร็จ แต่ไม่ได้รับภาพผลลัพธ์');
                 }
-
+                if (!isAuto) setStatus('ทำนายผลสำเร็จ ✅'); // อัปเดตสถานะหลักเฉพาะตอน Manual
             } else {
-                setStatus(`ส่งภาพไม่สำเร็จ: ${result.error || response.statusText}`);
+                setPredictedImageBase64(null);
                 setPredictionMessage(null);
+                setStatus(`ส่งภาพไม่สำเร็จ: ${result.error || response.statusText}`);
             }
         } catch (error) {
-            setStatus(`เชื่อมต่อ Server ไม่ได้: ${error.message}`);
+            setPredictedImageBase64(null);
             setPredictionMessage(null);
+            setStatus(`เชื่อมต่อ Server ไม่ได้: ${error.message}`);
         } finally {
             setIsSending(false);
+            // ในโหมด Auto, ให้สถานะยังคงเป็น Auto Detecting
+            if (isAuto && isAutoDetecting) {
+                setStatus(`กำลังทำนายอัตโนมัติ... (${new Date().toLocaleTimeString()})`);
+            }
         }
     };
+    
+    // ----------------------------------------------------------------------
+    // Handlers สำหรับ UI
+    // ----------------------------------------------------------------------
+
+    const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            stopCamera();
+            setCapturedBlob(file);
+            setPredictionMessage(null); 
+            setPredictedImageBase64(null); 
+            setStatus(`ไฟล์พร้อมส่ง: ${file.name}`);
+        }
+    };
+    
+    // Manual Capture (เรียก takeAndSendPhoto ในโหมด Manual)
+    const takePhotoManual = () => {
+        stopAutoDetect(); // ต้องหยุด Auto ก่อน
+        if (isCameraActive) {
+            takeAndSendPhoto(false);
+        }
+    }
+
+    // Manual Send (ใช้ไฟล์ที่อัปโหลด/ถ่ายไว้แล้ว)
+    const sendImageToBackendManual = () => {
+         takeAndSendPhoto(false, capturedBlob);
+    }
 
     const handleSelectModel = (event) => {
         setModelName(event.target.value);
     };
+    
+    // Clean up effect (เมื่อ Component ถูกถอดออก)
+    useEffect(() => {
+        return () => {
+            stopCamera();
+            stopAutoDetect();
+        };
+    }, []);
     
     // URL สำหรับภาพตัวอย่าง (ภาพต้นฉบับก่อนส่ง)
     const previewUrl = capturedBlob ? URL.createObjectURL(capturedBlob) : null;
@@ -149,104 +233,140 @@ function SimpleImageUploader() {
         : null;
 
     // ----------------------------------------------------------------------
-    // 4. การแสดงผล (Render): ส่วนที่แก้ไขเพื่อแสดงภาพทำนายผล
+    // 4. การแสดงผล (Render)
     // ----------------------------------------------------------------------
     
+    // กำหนดรูปแบบ Tailwind CSS สำหรับปุ่ม
+    const buttonClass = (bgColor) => `px-4 py-2 rounded-lg font-semibold transition duration-300 ease-in-out shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${bgColor} text-white`;
+    const containerClass = "p-6 max-w-2xl mx-auto my-10 bg-white rounded-xl shadow-2xl space-y-6";
+    const headerClass = "text-2xl font-bold text-center text-gray-800";
+    
     return (
-        <div className='Main'>
-            <h1>อัปโหลดและทำนายภาพ (YOLO React)</h1>
-            <p><strong>สถานะ:</strong> {status}</p>
-            <hr />
+        <div className={containerClass} style={{ fontFamily: 'Inter, sans-serif' }}>
+            <h1 className={headerClass}>อัปโหลดและทำนายภาพ (YOLO React)</h1>
+            <p className="text-center text-sm">
+                <strong>สถานะ:</strong> {status} {isSending ? '(กำลังส่ง...)': ''}
+            </p>
+            
+            <div className="w-full h-1 bg-gray-200 rounded-full"></div>
 
-            <h2>1. อัปโหลดไฟล์</h2>
+            {/* ---------------------------------- 1. อัปโหลดไฟล์ ---------------------------------- */}
+            <h2 className="text-xl font-semibold text-gray-700">1. อัปโหลดไฟล์</h2>
             <input 
                 type="file" 
                 accept="image/*" 
                 onChange={handleFileUpload}
-                disabled={isCameraActive || isSending}
+                disabled={isCameraActive || isSending || isAutoDetecting}
+                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100"
             />
-
-            <hr />
-
-            <h2>2. ถ่ายภาพจากกล้อง</h2>
-            <button onClick={isCameraActive ? stopCamera : startCamera} disabled={isSending}>
-                {isCameraActive ? 'ปิดกล้อง' : 'เปิดกล้อง'}
-            </button>
             
-            {isCameraActive && (
-                <button onClick={takePhoto} disabled={isSending}>
-                    ถ่ายภาพ
+            <div className="w-full h-1 bg-gray-200 rounded-full"></div>
+            
+            {/* ---------------------------------- 2. กล้อง & Auto Detect ---------------------------------- */}
+            <h2 className="text-xl font-semibold text-gray-700">2. กล้อง & Auto Detect</h2>
+            <div className="flex flex-wrap gap-2 items-center">
+                <button 
+                    onClick={isCameraActive ? stopCamera : startCamera} 
+                    disabled={isSending}
+                    className={buttonClass(isCameraActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600')}
+                >
+                    {isCameraActive ? 'ปิดกล้อง 🔴' : 'เปิดกล้อง 📷'}
                 </button>
-            )}
 
-            <div style={{ marginTop: '10px' }}>
+                {isCameraActive && (
+                    <button 
+                        onClick={isAutoDetecting ? stopAutoDetect : startAutoDetect} 
+                        disabled={isSending}
+                        className={buttonClass(isAutoDetecting ? 'bg-red-700 hover:bg-red-800' : 'bg-orange-500 hover:bg-orange-600')}
+                    >
+                        {isAutoDetecting ? 'หยุด Auto Detect 🛑' : 'เริ่ม Auto Detect (5 FPS) 🚀'}
+                    </button>
+                )}
+                
+                {isCameraActive && !isAutoDetecting && (
+                    <button 
+                        onClick={takePhotoManual} 
+                        disabled={isSending} 
+                        className={buttonClass('bg-purple-500 hover:bg-purple-600')}
+                    >
+                        ถ่ายภาพ (Manual) 🖼️
+                    </button>
+                )}
+            </div>
+
+            <div className="mt-4 flex justify-center">
                 <video 
                     ref={videoRef} 
                     autoPlay 
-                    style={{ 
-                        width: isCameraActive ? '100%' : '0', 
-                        maxWidth: '400px',
-                        display: isCameraActive ? 'block' : 'none',
-                        border: '1px solid black' 
-                    }}
+                    className={`w-full max-w-md bg-black rounded-lg ${isCameraActive ? 'block' : 'hidden'}`}
                 />
             </div>
-
             <canvas ref={canvasRef} style={{ display: 'none' }} />
+            
+            <div className="w-full h-1 bg-gray-200 rounded-full"></div>
 
-            <hr />
-
-            <h2>3. ดูตัวอย่าง & ส่งข้อมูล</h2>
-            <select value={modelName} onChange={handleSelectModel}>
-                <option selected value="new">Augmented</option>
-                <option value="old">No Augment</option>
-            </select>
-            {/* แสดงภาพต้นฉบับก่อนส่ง (เฉพาะเมื่อยังไม่มีภาพทำนายผล) */}
-            {previewUrl && !predictedImageUrl && ( 
-                <div style={{ marginTop: '10px' }}>
-                    <h3>ภาพต้นฉบับ</h3>
+            {/* ---------------------------------- 3. การทำนายผล ---------------------------------- */}
+            <h2 className="text-xl font-semibold text-gray-700">3. การทำนายผล</h2>
+            <div className="flex items-center space-x-4">
+                <label className="text-sm font-medium text-gray-700">เลือก Model:</label>
+                <select 
+                    value={modelName} 
+                    onChange={handleSelectModel} 
+                    disabled={isSending || isAutoDetecting}
+                    className="p-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                    <option value="new">Augmented</option>
+                    <option value="old">No Augment</option>
+                </select>
+            </div>
+            
+            {/* แสดงภาพต้นฉบับก่อนส่ง (เฉพาะเมื่อไม่ได้ Auto Detect และมีไฟล์) */}
+            {previewUrl && !predictedImageUrl && !isAutoDetecting && ( 
+                <div className="mt-4 p-4 border border-gray-300 rounded-lg bg-gray-50 text-center">
+                    <h3 className="text-lg font-medium mb-2">ภาพต้นฉบับ</h3>
                     <img 
                         src={previewUrl} 
                         alt="Image Preview" 
-                        style={{ maxWidth: '400px', maxHeight: '400px', display: 'block', border: '1px solid gray' }}
+                        className="max-w-full h-auto mx-auto rounded-lg shadow-md"
                     />
                     <button 
-                        onClick={sendImageToBackend} 
+                        onClick={sendImageToBackendManual} 
                         disabled={isSending || !capturedBlob}
-                        style={{ marginTop: '10px', backgroundColor: 'green', color: 'white' }}
+                        className={buttonClass('bg-green-600 hover:bg-green-700 mt-3')}
                     >
-                        {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผล'}
+                        {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผล (Manual) 📤'}
                     </button>
                 </div>
             )}
             
             {/* ส่วนแสดงผลการทำนาย (ภาพและข้อความ) */}
             {(predictedImageUrl || predictionMessage) && (
-                <div style={{ marginTop: '20px', padding: '10px', border: '2px solid green' }}>
-                    <h3>ผลการทำนาย YOLO:</h3>
+                <div className="mt-6 p-4 border-4 border-green-500 rounded-xl bg-green-50">
+                    <h3 className="text-xl font-bold text-green-700 mb-3">ผลการทำนาย YOLO:</h3>
                     
-                    {/* ** แท็ก <img> ที่แสดงภาพ Base64 ที่ถอดรหัสแล้ว ** */}
                     {predictedImageUrl && (
                         <>
-                            <h4>ภาพผลลัพธ์</h4>
+                            <h4 className="font-medium mb-2">ภาพผลลัพธ์</h4>
                             <img 
                                 src={predictedImageUrl} 
                                 alt="Predicted Image" 
-                                style={{ maxWidth: '400px', maxHeight: '400px', display: 'block', border: '1px solid blue' }}
+                                className="max-w-full h-auto mx-auto rounded-lg shadow-xl border-2 border-blue-400"
                             />
-                            <button 
-                                onClick={sendImageToBackend} 
-                                disabled={isSending || !capturedBlob}
-                                style={{ marginTop: '10px', backgroundColor: 'green', color: 'white' }}
-                            >
-                                {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผลอีกครั้ง'}
-                            </button>
                         </>
                     )}
 
-                    {/* แสดงข้อความผลลัพธ์ (เช่น "No object detected") */}
-                    {predictionMessage && <p><strong>ข้อความ:</strong> {predictionMessage}</p>}
+                    {predictionMessage && <p className="mt-3 text-gray-800"><strong>ข้อความ:</strong> {predictionMessage}</p>}
                     
+                    {/* ปุ่มส่งอีกครั้งสำหรับโหมด Manual ที่แสดงผลแล้ว */}
+                    {!isAutoDetecting && capturedBlob && (
+                         <button 
+                            onClick={sendImageToBackendManual} 
+                            disabled={isSending}
+                            className={buttonClass('bg-indigo-600 hover:bg-indigo-700 mt-3')}
+                        >
+                            {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผลอีกครั้ง 🔁'}
+                        </button>
+                    )}
                 </div>
             )}
         </div>
