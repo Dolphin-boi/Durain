@@ -65,6 +65,7 @@ function SimpleImageUploader() {
             clearInterval(autoDetectIntervalRef.current);
             autoDetectIntervalRef.current = null;
         }
+        setPredictedImageBase64(null)
         setIsAutoDetecting(false);
         if (isCameraActive) {
              setStatus('หยุดการทำนายอัตโนมัติ 🛑');
@@ -158,9 +159,8 @@ function SimpleImageUploader() {
                         setPredictionMessage(`ไม่พบเจอทุเรียน`)
                     }
                 } else {
-                    console.log(result)
                     setPredictedImageBase64(result.predicted_image);
-                    setPredictionMessage(`ไม่พบเจอทุเรียน`);
+                    setPredictionMessage(`โมเดลตรวจไม่พบ`);
                 }
                 if (!isAuto) setStatus('ทำนายผลสำเร็จ ✅'); // อัปเดตสถานะหลักเฉพาะตอน Manual
             } else {
@@ -204,7 +204,6 @@ function SimpleImageUploader() {
         }
     }
 
-    // Manual Send (ใช้ไฟล์ที่อัปโหลด/ถ่ายไว้แล้ว)
     const sendImageToBackendManual = () => {
          takeAndSendPhoto(false, capturedBlob);
     }
@@ -221,25 +220,18 @@ function SimpleImageUploader() {
         };
     }, []);
     
-    // URL สำหรับภาพตัวอย่าง (ภาพต้นฉบับก่อนส่ง)
     const previewUrl = capturedBlob ? URL.createObjectURL(capturedBlob) : null;
     
-    // ** การแปลง Base64 string ให้เป็น Data URL **
     const predictedImageUrl = predictedImageBase64 
         ? `data:image/png;base64,${predictedImageBase64}` 
         : null;
 
-    // ----------------------------------------------------------------------
-    // 4. การแสดงผล (Render)
-    // ----------------------------------------------------------------------
-    
-    // กำหนดรูปแบบ Tailwind CSS สำหรับปุ่ม
     const buttonClass = (bgColor) => `px-4 py-2 rounded-lg font-semibold transition duration-300 ease-in-out shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${bgColor} text-white`;
     const containerClass = "p-6 max-w-2xl mx-auto my-10 bg-white rounded-xl shadow-2xl space-y-6";
     const headerClass = "text-2xl font-bold text-center text-gray-800";
     
     return (
-        <div className={containerClass} style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className={containerClass}>
             <h1 className={headerClass}>อัปโหลดและทำนายภาพ (YOLO React)</h1>
             <div className="flex items-center space-x-4">
                 <label className="text-sm font-medium text-gray-700">เลือก Model:</label>
@@ -303,7 +295,8 @@ function SimpleImageUploader() {
             <div className="mt-4 flex justify-center">
                 <video 
                     ref={videoRef} 
-                    autoPlay 
+                    autoPlay
+                    playsInline={true}
                     className={`${isCameraActive && !isAutoDetecting ? 'show' : 'hidden'}`}
                 />  
                 {(predictedImageUrl && isAutoDetecting) && (
@@ -320,23 +313,43 @@ function SimpleImageUploader() {
 
 
                     {predictionMessage && <p className="mt-3 text-gray-800"><strong>ข้อความ:</strong> {predictionMessage}</p>}
-                    
-                    {/* ปุ่มส่งอีกครั้งสำหรับโหมด Manual ที่แสดงผลแล้ว */}
-                    {!isAutoDetecting && capturedBlob && (
-                         <button 
-                            onClick={sendImageToBackendManual} 
-                            disabled={isSending}
-                            className={buttonClass('bg-indigo-600 hover:bg-indigo-700 mt-3')}
-                        >
-                            {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผลอีกครั้ง 🔁'}
-                        </button>
+                </div>
+                )}
+                {(predictedImageUrl && !isAutoDetecting && !isCameraActive) && (
+                <div className="mt-6 p-4 border-4 border-green-500 rounded-xl bg-green-50">
+                    {predictedImageUrl && (
+                        <>
+                            <img 
+                                src={predictedImageUrl} 
+                                alt="Predicted Image" 
+                                className="max-w-full h-auto mx-auto rounded-lg shadow-xl border-2 border-blue-400"
+                            />
+                        </>
                     )}
+
+
+                    {predictionMessage && <p className="mt-3 text-gray-800"><strong>ข้อความ:</strong> {predictionMessage}</p>}
                 </div>
                 )}
             </div>
             <canvas ref={canvasRef} style={{ display: 'none' }} />
-            
-            <div className="w-full h-1 bg-gray-200 rounded-full"></div>
+
+            {previewUrl && !predictedImageUrl && !isAutoDetecting && ( 
+                <div className="pre">
+                    <img 
+                        src={previewUrl} 
+                        alt="Image Preview" 
+                        className="max-w-full h-auto mx-auto rounded-lg shadow-md"
+                    />
+                    <button 
+                        onClick={sendImageToBackendManual} 
+                        disabled={isSending || !capturedBlob}
+                        className={buttonClass('bg-green-600 hover:bg-green-700 mt-3')}
+                    >
+                        {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผล (Manual) 📤'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

@@ -45,7 +45,7 @@ def upload():
             }), 500
         else:
             return jsonify({
-                'msg': 'prediction_result',
+                'msg': prediction_result,
                 'filename': file.filename,
                 'predicted_image': img
             })
