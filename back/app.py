@@ -30,14 +30,13 @@ def upload():
         
         model_name = request.form.get('model')
         # (old, new)
-        print(model_name)
-        prediction_result = predict_image(file, model_name)
+        (prediction_result, img) = predict_image(file, model_name)
 
-        if prediction_result == "No object detected":
+        if prediction_result == "No object":
             return jsonify({
-                'msg': 'Prediction success',
+                'msg': prediction_result,
                 'filename': file.filename,
-                'prediction': prediction_result
+                'predicted_image': img
             })
         elif "Error during prediction" in prediction_result:
             return jsonify({
@@ -46,9 +45,9 @@ def upload():
             }), 500
         else:
             return jsonify({
-                'msg': 'Prediction success with image',
+                'msg': 'prediction_result',
                 'filename': file.filename,
-                'predicted_image': prediction_result
+                'predicted_image': img
             })
         
     else:

@@ -16,19 +16,19 @@ def predict_image(image_file, model_name):
             results = modelNew.predict(image, conf=0.5)
         else:
             results = modelOld.predict(image, conf=0.5)
-
-        if not any(r.boxes.cls.numel() > 0 for r in results): # numel() คือจำนวน element ใน tensor
-            return "No object detected"
             
         im_array = results[0].plot()  # ได้ NumPy array (BGR format)
         
-        im = Image.fromarray(im_array[..., ::-1])  # BGR to RGB
+        img = Image.fromarray(im_array[..., ::-1])
         
         buffered = io.BytesIO()
-        im.save(buffered, format="PNG") # หรือ JPEG หากต้องการ
+        img.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         
-        return img_str
+        if not any(r.boxes.cls.numel() > 0 for r in results):
+            return ("No object", img_str)
+        
+        return ("Found object", img_str)
         
     except Exception as e:
-        return f"Error during prediction: {str(e)}"
+        return f"Error during prediction: {str(e)}", None

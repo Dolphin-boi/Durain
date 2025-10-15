@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-// Endpoint ของ Flask Backend
-// ควรอัปเดตเป็น /predict ตามที่เราปรับปรุงใน Backend
-const API_ENDPOINT = 'http://127.0.0.1:5000/upload'; 
-// const API_ENDPOINT = 'https://91e9f88adc26.ngrok-free.app/upload'; 
+const API_ENDPOINT = `${process.env.REACT_APP_API_URL}/upload`;
 
-// กำหนดความถี่ในการทำนาย: 5 FPS หมายถึง ทุก 200 มิลลิวินาที (1000ms / 5)
-const AUTO_DETECT_INTERVAL_MS = 500; 
+const AUTO_DETECT_INTERVAL_MS = 500;
 
 function SimpleImageUploader() {
     // 1. ตัวแปรสถานะ (State)
@@ -18,6 +14,9 @@ function SimpleImageUploader() {
     const [predictedImageBase64, setPredictedImageBase64] = useState(null); 
     const [isSending, setIsSending] = useState(false); 
     const [modelName, setModelName] = useState('new'); 
+
+    const [availableCameras, setAvailableCameras] = useState([]); // รายการกล้องทั้งหมด
+    const [currentCameraId, setCurrentCameraId] = useState('');
     
     // 2. ตัวอ้างอิง (Ref)
     const videoRef = useRef(null); 
@@ -29,6 +28,26 @@ function SimpleImageUploader() {
     // ฟังก์ชันจัดการกล้องพื้นฐาน
     // ----------------------------------------------------------------------
 
+    const getAvailableCameras = async () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            setStatus('เบราว์เซอร์ไม่รองรับการค้นหากล้อง');
+            return;
+        }
+        
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            
+            setAvailableCameras(videoDevices);
+            if (videoDevices.length > 0 && !currentCameraId) {
+                // เลือกกล้องตัวแรกเป็นค่าเริ่มต้น
+                setCurrentCameraId(videoDevices[0].deviceId); 
+            }
+        } catch (err) {
+            console.error("Error listing devices:", err);
+        }
+    };
+
     const stopCamera = () => {
         // ต้องหยุด Auto Detect ด้วยเมื่อปิดกล้อง
         stopAutoDetect(); 
@@ -39,14 +58,27 @@ function SimpleImageUploader() {
         setIsCameraActive(false);
     };
 
-    const startCamera = async () => {
+    const startCamera = async () => { // 📢 แก้ไข: startCamera ไม่ต้องรับพารามิเตอร์แล้ว เพราะใช้ currentCameraId ใน State
         stopCamera();
         setCapturedBlob(null); 
         setPredictionMessage(null); 
         setPredictedImageBase64(null); 
         
+        if (!currentCameraId) {
+            setStatus('ไม่พบ ID กล้องที่เลือก');
+            return;
+        }
+        
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            // 📢 โค้ดที่เปลี่ยน: ใช้ deviceId เพื่อเลือกกล้อง
+            const constraints = {
+                video: {
+                    deviceId: currentCameraId ? { exact: currentCameraId } : true,
+                },
+                audio: false
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             streamRef.current = stream;
             
             if (videoRef.current) {
@@ -223,6 +255,23 @@ function SimpleImageUploader() {
             stopAutoDetect();
         };
     }, []);
+
+    useEffect(() => {
+        if (isCameraActive && currentCameraId) {
+            // หากกล้องเปิดอยู่และมีการเปลี่ยน ID ให้เปิดกล้องใหม่ด้วย ID ใหม่
+            startCamera();
+        }
+    }, [currentCameraId]);
+
+    const handleCameraChange = (event) => {
+        // ต้องหยุดกล้องก่อนที่จะสลับ (ถ้ากำลังทำงานอยู่)
+        if (isCameraActive) {
+            stopCamera();
+        }
+        // ตั้งค่า ID กล้องใหม่
+        setCurrentCameraId(event.target.value); 
+        // startCamera จะถูกเรียกอัตโนมัติจาก useEffect ด้านบน หรือถูกเรียกผ่านปุ่ม 'เปิดกล้อง'
+    };
     
     // URL สำหรับภาพตัวอย่าง (ภาพต้นฉบับก่อนส่ง)
     const previewUrl = capturedBlob ? URL.createObjectURL(capturedBlob) : null;
@@ -262,8 +311,24 @@ function SimpleImageUploader() {
             
             <div className="w-full h-1 bg-gray-200 rounded-full"></div>
             
-            {/* ---------------------------------- 2. กล้อง & Auto Detect ---------------------------------- */}
             <h2 className="text-xl font-semibold text-gray-700">2. กล้อง & Auto Detect</h2>
+            {availableCameras.length > 1 && ( // แสดง Dropdown เมื่อมีกล้องมากกว่า 1 ตัว
+                <div className="flex items-center space-x-4 mb-4">
+                    <label className="text-sm font-medium text-gray-700">เลือกกล้อง:</label>
+                    <select 
+                        value={currentCameraId} 
+                        onChange={handleCameraChange} 
+                        disabled={isSending || isAutoDetecting}
+                        className="p-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        {availableCameras.map(device => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                                {device.label || `กล้อง ID: ${device.deviceId.substring(0, 5)}...`}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
             <div className="flex flex-wrap gap-2 items-center">
                 <button 
                     onClick={isCameraActive ? stopCamera : startCamera} 

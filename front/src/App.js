@@ -1,12 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
+import './App.css'
 
-// Endpoint ของ Flask Backend
-// ควรอัปเดตเป็น /predict ตามที่เราปรับปรุงใน Backend
-const API_ENDPOINT = 'http://127.0.0.1:5000/upload'; 
-// const API_ENDPOINT = 'https://91e9f88adc26.ngrok-free.app/upload'; 
+const API_ENDPOINT = `${process.env.REACT_APP_API_URL}/upload`;
 
-// กำหนดความถี่ในการทำนาย: 5 FPS หมายถึง ทุก 200 มิลลิวินาที (1000ms / 5)
-const AUTO_DETECT_INTERVAL_MS = 500; 
+const AUTO_DETECT_INTERVAL_MS = 500;
 
 function SimpleImageUploader() {
     // 1. ตัวแปรสถานะ (State)
@@ -30,7 +27,6 @@ function SimpleImageUploader() {
     // ----------------------------------------------------------------------
 
     const stopCamera = () => {
-        // ต้องหยุด Auto Detect ด้วยเมื่อปิดกล้อง
         stopAutoDetect(); 
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
@@ -46,7 +42,7 @@ function SimpleImageUploader() {
         setPredictedImageBase64(null); 
         
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: ["environment", "user", "left", "right"] } }, audio: false });
             streamRef.current = stream;
             
             if (videoRef.current) {
@@ -113,7 +109,6 @@ function SimpleImageUploader() {
             }
             
             // ถ่ายภาพจาก Video ลง Canvas
-            console.log(video.videoWidth, video.videoHeight)
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -157,13 +152,15 @@ function SimpleImageUploader() {
             if (response.ok) {
                 if (result.predicted_image) {
                     setPredictedImageBase64(result.predicted_image); 
-                    setPredictionMessage(`ทำนายสำเร็จ! พบวัตถุ (${isAuto ? 'Auto' : 'Manual'})`);
-                } else if (result.prediction === "No object detected") {
-                    setPredictedImageBase64(null);
-                    setPredictionMessage(result.prediction);
+                    if (result.msg === "Found object") {
+                        setPredictionMessage(`เจอทุเรียน`)
+                    } else {
+                        setPredictionMessage(`ไม่พบเจอทุเรียน`)
+                    }
                 } else {
-                    setPredictedImageBase64(null);
-                    setPredictionMessage(result.msg || 'ทำนายสำเร็จ แต่ไม่ได้รับภาพผลลัพธ์');
+                    console.log(result)
+                    setPredictedImageBase64(result.predicted_image);
+                    setPredictionMessage(`ไม่พบเจอทุเรียน`);
                 }
                 if (!isAuto) setStatus('ทำนายผลสำเร็จ ✅'); // อัปเดตสถานะหลักเฉพาะตอน Manual
             } else {
@@ -244,6 +241,18 @@ function SimpleImageUploader() {
     return (
         <div className={containerClass} style={{ fontFamily: 'Inter, sans-serif' }}>
             <h1 className={headerClass}>อัปโหลดและทำนายภาพ (YOLO React)</h1>
+            <div className="flex items-center space-x-4">
+                <label className="text-sm font-medium text-gray-700">เลือก Model:</label>
+                <select 
+                    value={modelName} 
+                    onChange={handleSelectModel} 
+                    disabled={isSending || isAutoDetecting}
+                    className="p-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                    <option value="new">Augmented</option>
+                    <option value="old">No Augment</option>
+                </select>
+            </div>
             <p className="text-center text-sm">
                 <strong>สถานะ:</strong> {status} {isSending ? '(กำลังส่ง...)': ''}
             </p>
@@ -261,13 +270,12 @@ function SimpleImageUploader() {
             />
             
             <div className="w-full h-1 bg-gray-200 rounded-full"></div>
-            
+
             {/* ---------------------------------- 2. กล้อง & Auto Detect ---------------------------------- */}
             <h2 className="text-xl font-semibold text-gray-700">2. กล้อง & Auto Detect</h2>
             <div className="flex flex-wrap gap-2 items-center">
                 <button 
                     onClick={isCameraActive ? stopCamera : startCamera} 
-                    disabled={isSending}
                     className={buttonClass(isCameraActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600')}
                 >
                     {isCameraActive ? 'ปิดกล้อง 🔴' : 'เปิดกล้อง 📷'}
@@ -276,17 +284,15 @@ function SimpleImageUploader() {
                 {isCameraActive && (
                     <button 
                         onClick={isAutoDetecting ? stopAutoDetect : startAutoDetect} 
-                        disabled={isSending}
                         className={buttonClass(isAutoDetecting ? 'bg-red-700 hover:bg-red-800' : 'bg-orange-500 hover:bg-orange-600')}
                     >
-                        {isAutoDetecting ? 'หยุด Auto Detect 🛑' : 'เริ่ม Auto Detect (5 FPS) 🚀'}
+                        {isAutoDetecting ? 'หยุด Auto Detect 🛑' : 'เริ่ม Auto Detect (2 FPS) 🚀'}
                     </button>
                 )}
                 
                 {isCameraActive && !isAutoDetecting && (
                     <button 
                         onClick={takePhotoManual} 
-                        disabled={isSending} 
                         className={buttonClass('bg-purple-500 hover:bg-purple-600')}
                     >
                         ถ่ายภาพ (Manual) 🖼️
@@ -298,55 +304,12 @@ function SimpleImageUploader() {
                 <video 
                     ref={videoRef} 
                     autoPlay 
-                    className={`w-full max-w-md bg-black rounded-lg ${isCameraActive ? 'block' : 'hidden'}`}
-                />
-            </div>
-            <canvas ref={canvasRef} style={{ display: 'none' }} />
-            
-            <div className="w-full h-1 bg-gray-200 rounded-full"></div>
-
-            {/* ---------------------------------- 3. การทำนายผล ---------------------------------- */}
-            <h2 className="text-xl font-semibold text-gray-700">3. การทำนายผล</h2>
-            <div className="flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">เลือก Model:</label>
-                <select 
-                    value={modelName} 
-                    onChange={handleSelectModel} 
-                    disabled={isSending || isAutoDetecting}
-                    className="p-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                    <option value="new">Augmented</option>
-                    <option value="old">No Augment</option>
-                </select>
-            </div>
-            
-            {/* แสดงภาพต้นฉบับก่อนส่ง (เฉพาะเมื่อไม่ได้ Auto Detect และมีไฟล์) */}
-            {previewUrl && !predictedImageUrl && !isAutoDetecting && ( 
-                <div className="mt-4 p-4 border border-gray-300 rounded-lg bg-gray-50 text-center">
-                    <h3 className="text-lg font-medium mb-2">ภาพต้นฉบับ</h3>
-                    <img 
-                        src={previewUrl} 
-                        alt="Image Preview" 
-                        className="max-w-full h-auto mx-auto rounded-lg shadow-md"
-                    />
-                    <button 
-                        onClick={sendImageToBackendManual} 
-                        disabled={isSending || !capturedBlob}
-                        className={buttonClass('bg-green-600 hover:bg-green-700 mt-3')}
-                    >
-                        {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผล (Manual) 📤'}
-                    </button>
-                </div>
-            )}
-            
-            {/* ส่วนแสดงผลการทำนาย (ภาพและข้อความ) */}
-            {(predictedImageUrl || predictionMessage) && (
+                    className={`${isCameraActive && !isAutoDetecting ? 'show' : 'hidden'}`}
+                />  
+                {(predictedImageUrl && isAutoDetecting) && (
                 <div className="mt-6 p-4 border-4 border-green-500 rounded-xl bg-green-50">
-                    <h3 className="text-xl font-bold text-green-700 mb-3">ผลการทำนาย YOLO:</h3>
-                    
                     {predictedImageUrl && (
                         <>
-                            <h4 className="font-medium mb-2">ภาพผลลัพธ์</h4>
                             <img 
                                 src={predictedImageUrl} 
                                 alt="Predicted Image" 
@@ -354,6 +317,7 @@ function SimpleImageUploader() {
                             />
                         </>
                     )}
+
 
                     {predictionMessage && <p className="mt-3 text-gray-800"><strong>ข้อความ:</strong> {predictionMessage}</p>}
                     
@@ -368,7 +332,11 @@ function SimpleImageUploader() {
                         </button>
                     )}
                 </div>
-            )}
+                )}
+            </div>
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+            
+            <div className="w-full h-1 bg-gray-200 rounded-full"></div>
         </div>
     );
 }
