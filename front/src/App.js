@@ -162,13 +162,16 @@ function SimpleImageUploader() {
 
     const handleFileUpload = (event) => {
         stopCamera()
+        stopAutoDetect();
+        setPredictionMessage(null);
+        setPredictedImageBase64(null);
         const file = event.target.files[0];
         if (file) {
-            stopCamera();
             setCapturedBlob(file);
-            setPredictionMessage(null);
-            setPredictedImageBase64(null);
             setStatus(`ไฟล์พร้อมส่ง: ${file.name}`);
+        }
+        if (event.target) {
+            event.target.value = ""; 
         }
     };
 
