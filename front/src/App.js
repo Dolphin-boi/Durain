@@ -202,7 +202,7 @@ function SimpleImageUploader() {
  
     return (
         <div className="container-sm rounded">
-            <h1 className="bg-secondary text-center text-body">ทำนายความสุกของทุเรียน</h1>
+            <h1 className="bg-light text-center text-body">ทำนายความสุกของทุเรียน</h1>
 
             <p className="text-start text-body">
                 <strong>สถานะ:</strong> {status} {isSending ? '(กำลังส่ง...)': ''}
