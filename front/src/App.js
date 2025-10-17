@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './App.css'
 
-const API_ENDPOINT = `${process.env.REACT_APP_API_URL}/upload`;
+const IMAGE_API_ENDPOINT = `${process.env.REACT_APP_API_URL}/upload`;
+const VIDEO_API_ENDPOINT = `${process.env.REACT_APP_API_URL}/upload_video`;
 
-const AUTO_DETECT_INTERVAL_MS = 500;
+const AUTO_DETECT_INTERVAL_MS = 1000;
 
 function SimpleImageUploader() {
     const [capturedBlob, setCapturedBlob] = useState(null);
@@ -14,6 +15,8 @@ function SimpleImageUploader() {
     const [predictedImageBase64, setPredictedImageBase64] = useState(null);
     const [isSending, setIsSending] = useState(false);
     const [modelName, setModelName] = useState('new');
+    const [fileType, setFileType] = useState(null);
+    const [predictedVideoUrl, setPredictedVideoUrl] = useState(null);
 
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
@@ -22,6 +25,7 @@ function SimpleImageUploader() {
 
     const stopCamera = () => {
         stopAutoDetect();
+        setPredictedVideoUrl(null);
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
             streamRef.current = null;
@@ -34,7 +38,7 @@ function SimpleImageUploader() {
         setCapturedBlob(null);
         setPredictionMessage(null);
         setPredictedImageBase64(null);
-
+        setFileType(null);
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: ["environment", "user", "left", "right"] } }, audio: false });
             streamRef.current = stream;
@@ -103,6 +107,7 @@ function SimpleImageUploader() {
             // ในโหมด Manual, เซ็ต capturedBlob และหยุดกล้อง
             if (!isAuto) {
                 setCapturedBlob(file);
+                setFileType('image');
                 stopCamera();
                 setStatus('ถ่ายภาพสำเร็จ! กำลังส่งทำนาย...');
             }
@@ -111,6 +116,17 @@ function SimpleImageUploader() {
             file = capturedBlob;
         } else {
             return;
+        }
+
+        let endpoint;
+
+        const currentFileType = file.type.startsWith('video/') ? 'video' : 'image';
+        if (currentFileType === 'video') {
+            endpoint = VIDEO_API_ENDPOINT;
+            if (!isAuto) setStatus('ไฟล์วิดีโอพร้อมส่ง...กำลังส่งทำนาย...');
+        } else {
+            endpoint = IMAGE_API_ENDPOINT;
+            if (!isAuto) setStatus('ไฟล์รูปภาพพร้อมส่ง...กำลังส่งทำนาย...');
         }
 
         setIsSending(true);
@@ -123,30 +139,35 @@ function SimpleImageUploader() {
         formData.append('model', modelName);
 
         try {
-            const response = await fetch(API_ENDPOINT, {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 body: formData,
             });
 
             const result = await response.json();
-
             if (response.ok) {
-                if (result.predicted_image) {
-                    setPredictedImageBase64(result.predicted_image);
-                    if (result.msg === "Found object") {
-                        setPredictionMessage(`เจอทุเรียน`)
-                    } else {
-                        setPredictionMessage(`ไม่พบเจอทุเรียน`)
-                    }
+                if (result.video_filename) {
+                    const videoUrl = `${process.env.REACT_APP_API_URL}/video/${result.video_filename}`;
+                    setPredictedVideoUrl(videoUrl);
+                    setPredictionMessage('วิดีโอประมวลผลสำเร็จและพร้อมเล่น');
+                    setStatus('ทำนายผลสำเร็จ ✅');
                 } else {
-                    setPredictedImageBase64(result.predicted_image);
-                    setPredictionMessage(`โมเดลตรวจไม่พบ`);
+                    if (result.predicted_image) {
+                        setPredictedImageBase64(result.predicted_image);
+                        if (result.msg === "Found object") {
+                            setPredictionMessage(`เจอทุเรียน`)
+                        } else {
+                            setPredictionMessage(`ไม่พบเจอทุเรียน`)
+                        }
+                    } else {
+                        setPredictionMessage(result.msg || `ทำนายผลลัพธ์เสร็จสิ้น`);
+                    }
+                    if (!isAuto) setStatus('ทำนายผลสำเร็จ ✅');
                 }
-                if (!isAuto) setStatus('ทำนายผลสำเร็จ ✅');
             } else {
                 setPredictedImageBase64(null);
                 setPredictionMessage(null);
-                setStatus(`ส่งภาพไม่สำเร็จ: ${result.error || response.statusText}`);
+                setStatus('เกิดข้อผิดพลาดในการทำนาย');
             }
         } catch (error) {
             setPredictedImageBase64(null);
@@ -165,13 +186,18 @@ function SimpleImageUploader() {
         stopAutoDetect();
         setPredictionMessage(null);
         setPredictedImageBase64(null);
+        setPredictedVideoUrl(null);
+
         const file = event.target.files[0];
         if (file) {
+            const isVideo = file.type.startsWith('video/');
+            const type = isVideo ? 'video' : 'image';
             setCapturedBlob(file);
-            setStatus(`ไฟล์พร้อมส่ง: ${file.name}`);
+            setFileType(type);
+            setStatus(`ไฟล์ ${type === 'video' ? 'วิดีโอ' : 'รูปภาพ'} พร้อมส่ง: ${file.name}`);
         }
         if (event.target) {
-            event.target.value = ""; 
+            event.target.value = "";
         }
     };
 
@@ -226,10 +252,10 @@ function SimpleImageUploader() {
             {/*upload file*/}
             <div className="w-100  p-1">
                 <h2 className="text-body">1. อัปโหลดไฟล์</h2>
-                <div class="input-group">
+                <div className="input-group">
                     <input
                         type="file"
-                        accept="image/*"
+                        accept="image/*,video/*"
                         onChange={handleFileUpload}
                         className="form-control"
                         aria-label="Upload"
@@ -289,7 +315,6 @@ function SimpleImageUploader() {
                             </>
                         )}
 
-
                         {predictionMessage && <p className=""><strong>ข้อความ:</strong> {predictionMessage}</p>}
                     </div>
                 )}
@@ -309,19 +334,45 @@ function SimpleImageUploader() {
                         {predictionMessage && <p className="text-body text-start"><strong>ผลการทำนาย : </strong> {predictionMessage}</p>}
                     </div>
                 )}
-                {previewUrl && !predictedImageUrl && !isAutoDetecting && (
+                {(predictedVideoUrl && !isAutoDetecting && !isCameraActive) && (
                     <div className="w-100">
-                        <img
-                            src={previewUrl}
-                            alt="Image Preview"
-                            className="w-100"
-                        />
+                        {predictedVideoUrl && (
+                            <>
+                                <video
+                                    src={predictedVideoUrl}
+                                    controls
+                                    autoPlay
+                                    loop
+                                    alt="Predicted Uploaded Video"
+                                    className="w-100"
+                                />
+                            </>
+                        )}
+                        {predictionMessage && <p className="text-body text-start"><strong>ผลการทำนาย : </strong> {predictionMessage}</p>}
+                    </div>
+                )}
+                {previewUrl && !predictedImageUrl && !predictedVideoUrl && !isAutoDetecting && (
+                    <div className="w-100">
+                        {fileType === 'video' ? (
+                            <video
+                                src={previewUrl}
+                                controls
+                                alt="Video Preview"
+                                className="w-100"
+                            />
+                        ) : (
+                            <img
+                                src={previewUrl}
+                                alt="Image Preview"
+                                className="w-100"
+                            />
+                        )}
                         <button
                             onClick={sendImageToBackendManual}
                             disabled={isSending || !capturedBlob}
                             className="btn btn-primary"
                         >
-                            {isSending ? 'กำลังส่ง...' : 'ส่งภาพทำนายผล (Manual) 📤'}
+                            {isSending ? 'กำลังส่ง...' : `ส่งไฟล์ ${fileType === 'video' ? 'วิดีโอ' : 'รูปภาพ'} ทำนายผล (Manual) 📤`}
                         </button>
                     </div>
                 )}

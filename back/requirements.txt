@@ -1,12 +1,4 @@
-# requirements.txt
-# This file lists the core dependencies for the Flask Backend using YOLOv8.
-
-# Flask for the web server/API
 flask
 flask_cors
-
-# Pillow is used for image manipulation/reading (e.g., in yolo_model.py)
 Pillow
-
-# Ultralytics framework for running the YOLOv8 model inference
 ultralytics
