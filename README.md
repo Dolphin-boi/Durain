@@ -90,10 +90,6 @@ sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d example.com
 ```
 
-Model file handling (recommended)
-- Option A (recommended): Remove `*.pt` files from git and store them externally (S3, Google Cloud Storage, or GitHub release). On server startup, download them into an expected directory.
-- Option B: Keep weights on the server and mount a host volume into the backend container in `docker-compose.yml`.
-
 Production notes and improvements
 - Don't use Flask's debug server in production. Run the backend with gunicorn or another WSGI server.
 - If you need GPU acceleration, switch the Docker base image to an appropriate CUDA image and configure the server to use the NVIDIA container runtime.
