@@ -330,8 +330,12 @@ function SimpleImageUploader() {
                             </>
                         )}
 
-
-                        {predictionMessage && <p className="text-body text-start"><strong>ผลการทำนาย : </strong> {predictionMessage}</p>}
+                        {predictionMessage && 
+                            <>
+                                <div class="w-100"></div>
+                                <p className="text-body text-start"><strong>ผลการทำนาย : </strong> {predictionMessage}</p>
+                            </>
+                        }
                     </div>
                 )}
                 {(predictedVideoUrl && !isAutoDetecting && !isCameraActive) && (
@@ -344,11 +348,16 @@ function SimpleImageUploader() {
                                     autoPlay
                                     loop
                                     alt="Predicted Uploaded Video"
-                                    className="w-100"
+                                    className="w-100 w-md-auto video_container"
                                 />
                             </>
                         )}
-                        {predictionMessage && <p className="text-body text-start"><strong>ผลการทำนาย : </strong> {predictionMessage}</p>}
+                        {predictionMessage && 
+                            <>
+                                <div class="w-100"></div>
+                                <p className="text-body text-start"><strong>ผลการทำนาย : </strong> {predictionMessage}</p>
+                            </>
+                        }
                     </div>
                 )}
                 {previewUrl && !predictedImageUrl && !predictedVideoUrl && !isAutoDetecting && (
@@ -358,7 +367,7 @@ function SimpleImageUploader() {
                                 src={previewUrl}
                                 controls
                                 alt="Video Preview"
-                                className="w-100"
+                                className="w-100 w-md-auto video_container"
                             />
                         ) : (
                             <img
@@ -367,6 +376,7 @@ function SimpleImageUploader() {
                                 className="w-100"
                             />
                         )}
+                        <div class="w-100"></div>
                         <button
                             onClick={sendImageToBackendManual}
                             disabled={isSending || !capturedBlob}

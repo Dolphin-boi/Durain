@@ -5,3 +5,8 @@
 .show {
     display: block;
 }
+
+.video_container{
+    max-width: 400px;
+    height: auto;
+}
