@@ -2,8 +2,8 @@ from ultralytics import YOLO
 from PIL import Image
 import io, base64, cv2, numpy, os
 
-modelNew = YOLO('modelv4.pt')
-modelOld = YOLO('modelv1.pt')
+modelNew = YOLO('modelv6.pt')
+modelOld = YOLO('modelv4.pt')
 
 class_names = ['defective', 'immature', 'mature']
 colors = {

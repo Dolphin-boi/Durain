@@ -244,8 +244,8 @@ function SimpleImageUploader() {
                     disabled={isSending || isAutoDetecting}
                     className="form-select"
                 >
-                    <option value="new">Augmented</option>
-                    <option value="old">No Augment</option>
+                    <option value="new">Best model</option>
+                    <option value="old">Old model</option>
                 </select>
             </div>
 
