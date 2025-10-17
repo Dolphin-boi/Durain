@@ -10,9 +10,6 @@ env.bak/
 venv.bak/
 *.egg-info/
 
-# PyTorch model weights
-*.pt
-
 # Node
 node_modules/
 build/
@@ -204,3 +201,5 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+*.mp4
